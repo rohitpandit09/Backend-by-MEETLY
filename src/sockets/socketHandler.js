@@ -9,32 +9,41 @@ const socketHandler = (io) => {
   io.on("connection", (socket) => {
     console.log("Socket connected", socket.id);
 
-    socket.on("join_class", ({ classId, user }) => {
+    socket.on("join_class", async ({ classId, user }) => {
       if (!classId || !user) return;
 
-      socket.join(classId);
+      try {
+        const foundClass = await Class.findById(classId);
+        if (!foundClass) return;
 
-      if (!onlineUsers[classId]) {
-        onlineUsers[classId] = [];
+        socket.join(classId);
+
+        if (!onlineUsers[classId]) {
+          onlineUsers[classId] = [];
+        }
+
+        const exists = onlineUsers[classId].some((u) => u.socketId === socket.id);
+
+        if (!exists) {
+          onlineUsers[classId].push({
+            id: user.id,
+            name: user.name,
+            role: user.role,
+            socketId: socket.id
+          });
+        }
+
+        io.to(classId).emit("online_users", onlineUsers[classId]);
+        socket.to(classId).emit("user_joined", { id: user.id, name: user.name, role: user.role, socketId: socket.id });
+        const existingPolls = livePolls[classId] || [];
+        socket.emit("existing_polls", existingPolls);
+        const existingTests = liveTests[classId] || [];
+        socket.emit("existing_tests", existingTests);
+        const existingMessages = foundClass.messages || [];
+        socket.emit("existing_messages", existingMessages);
+      } catch (err) {
+        console.log("join_class error", err);
       }
-
-      const exists = onlineUsers[classId].some((u) => u.socketId === socket.id);
-
-      if (!exists) {
-        onlineUsers[classId].push({
-          id: user.id,
-          name: user.name,
-          role: user.role,
-          socketId: socket.id
-        });
-      }
-
-      io.to(classId).emit("online_users", onlineUsers[classId]);
-      socket.to(classId).emit("user_joined", { id: user.id, name: user.name, role: user.role, socketId: socket.id });
-      const existingPolls = livePolls[classId] || [];
-      socket.emit("existing_polls", existingPolls);
-      const existingTests = liveTests[classId] || [];
-      socket.emit("existing_tests", existingTests);
     });
 
     socket.on("send_message", async (msg) => {
